@@ -1,0 +1,86 @@
+<?php
+
+/**
+ * Specifically ALLOW access to files in some cases.
+ *
+ * Implements hook_file_entity_access().
+ */
+function file_entity_access_file_entity_access($op, $file, $account) {
+  $access_roles = array();
+
+  if (!empty($file->field_role_access[LANGUAGE_NONE])) {
+    foreach ($file->field_role_access[LANGUAGE_NONE] as $role) {
+      $access_roles[] = $role['value'];
+    }
+  }
+
+  // Check if we deal with a private file
+  $is_private = !empty($file->uri) && strpos($file->uri, 'private://') === 0;
+
+  // Check if the user has role with access
+  $user_has_access = _file_entity_access_user_has_one_of_roles($access_roles, $account);
+
+  if ($op == 'view' && $is_private && $user_has_access) {
+    return FILE_ENTITY_ACCESS_ALLOW;
+  }
+
+  return FILE_ENTITY_ACCESS_IGNORE;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function file_entity_access_form_alter(&$form, &$form_state, $form_id) {
+  if (($form_id == 'file_entity_add_upload' || $form_id == 'file_entity_edit')) {
+    // Add custom validation callback.
+    if (isset($form['actions']['submit']['#validate'])) {
+      $form['actions']['submit']['#validate'][] = 'file_entity_access_form_validate';
+    }
+    elseif (isset($form['#validate'])) {
+      $form['#validate'][] = 'file_entity_access_form_validate';
+    }
+
+    // Overwrite submit callback.
+    if (isset($form['actions']['submit']['#submit'])) {
+      array_unshift($form['actions']['submit']['#submit'], 'file_entity_access_form_submit');
+    }
+    elseif (isset($form['#submit'])) {
+      array_unshift($form['#submit'], 'file_entity_access_form_submit');
+    }
+  }
+}
+
+/**
+ * Custom file entity form validate callback.
+ */
+function file_entity_access_form_validate(&$form, &$form_state) {
+  // If at least one access role is selected set the file destination to private.
+  if (isset($form_state['values']['field_role_access'][LANGUAGE_NONE])
+    && count($form_state['values']['field_role_access'][LANGUAGE_NONE]) > 0
+    && !is_null($form_state['values']['field_role_access'][LANGUAGE_NONE][0]['value'])
+    && $form_state['values']['scheme'] == 'public'
+    && $form['destination']['scheme']['#default_value'] !== 'public'
+  ) {
+    form_set_error('', t('Can\'t make this file public, there are still some roles selected.'));
+  }
+}
+
+/**
+ * Custom file entity form submit callback.
+ */
+function file_entity_access_form_submit(&$form, &$form_state) {
+  // If at least one access role is selected set the file destination to private.
+  if (isset($form_state['values']['field_role_access'][LANGUAGE_NONE]) && count($form_state['values']['field_role_access'][LANGUAGE_NONE]) > 0 && !is_null($form_state['values']['field_role_access'][LANGUAGE_NONE][0]['value'])) {
+    $form_state['values']['scheme'] = 'private';
+    if ($form['destination']['scheme']['#default_value'] == 'public') {
+      drupal_set_message(t('File was made private because access roles have been selected.'), 'warning');
+    }
+  }
+}
+
+/*
+ * Checks if a user has (a) certain role/roles.
+ */
+function _file_entity_access_user_has_one_of_roles(array $role_ids, $account) {
+  return !!count(array_intersect($role_ids, array_keys($account->roles)));
+}

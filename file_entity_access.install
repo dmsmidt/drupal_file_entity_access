@@ -1,0 +1,23 @@
+<?php
+
+function file_entity_access_install() {
+  if (module_exists('file_force')) {
+    _file_entity_access_run_after_file_force();
+  }
+}
+
+// Make sure our module runs later than file_force.
+function _file_entity_access_run_after_file_force() {
+  // Find out the weight of file_force.
+  $weight = db_select('system', 's')
+  ->fields('s', array('weight'))
+  ->condition('name', 'file_force', '=')
+  ->execute()
+  ->fetchField();
+
+  // Set our module to a weight 1 heavier, so ours moves lower in execution order.
+  db_update('system')
+  ->fields(array('weight' => $weight + 1))
+  ->condition('name', 'file_entity_access', '=')
+  ->execute();
+}

@@ -1,0 +1,8 @@
+name = File Entity Access
+description = Adds role based permissions per file entity.
+package = Media
+core = 7.x
+version = 7.x-1.x
+
+dependencies[] = role_field
+dependencies[] = file_entity
